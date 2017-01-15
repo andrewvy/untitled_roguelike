@@ -7,12 +7,19 @@ use rand::Rng;
 
 use tcod::console::*;
 use tcod::colors::{self, Color};
+use tcod::map::{Map as FovMap, FovAlgorithm};
+
+const FOV_ALGO: FovAlgorithm = FovAlgorithm::Basic;
+const FOV_LIGHT_WALLS: bool = true;
+const TORCH_RADIUS: i32 = 10;
 
 const MAP_WIDTH: i32 = 80;
 const MAP_HEIGHT: i32 = 50;
 
 const COLOR_DARK_WALL: Color = Color { r: 0, g: 0, b: 100 };
+const COLOR_LIGHT_WALL : Color = Color { r: 130, g: 110, b: 50 };
 const COLOR_DARK_GROUND: Color = Color { r: 50, g: 50, b: 150 };
+const COLOR_LIGHT_GROUND : Color = Color { r: 200, g: 180, b: 50 };
 
 const SCREEN_WIDTH: i32 = 80;
 const SCREEN_HEIGHT: i32 = 50;
@@ -60,7 +67,8 @@ impl Object {
 #[derive(Clone, Copy, Debug)]
 struct Tile {
   blocked: bool,
-  block_sight: bool
+  block_sight: bool,
+  explored: bool,
 }
 
 impl Tile {
@@ -68,6 +76,7 @@ impl Tile {
     Tile {
       blocked: false,
       block_sight: false,
+      explored: false,
     }
   }
 
@@ -75,6 +84,7 @@ impl Tile {
     Tile {
       blocked: true,
       block_sight: true,
+      explored: false,
     }
   }
 }
@@ -183,7 +193,7 @@ fn main() {
     .init();
 
   let mut con = Offscreen::new(MAP_WIDTH, MAP_HEIGHT);
-  let (map, (player_x, player_y)) = make_map();
+  let (mut map, (player_x, player_y)) = make_map();
 
   tcod::system::set_fps(LIMIT_FPS);
 
@@ -191,8 +201,20 @@ fn main() {
   let npc = Object::new(player_x + 1, player_y + 2, '@', colors::YELLOW);
   let mut objects = [player, npc];
 
+  let mut fov_map = FovMap::new(MAP_WIDTH, MAP_HEIGHT);
+  for y in 0..MAP_HEIGHT {
+    for x in 0..MAP_WIDTH {
+      fov_map.set(x, y, !map[x as usize][y as usize].block_sight,
+                        !map[x as usize][y as usize].blocked);
+    }
+  }
+
+  let mut previous_player_position = (-1, -1);
+
   while !root.window_closed() {
-    render_all(&mut root, &mut con, &objects, &map);
+    let fov_recompute = previous_player_position != (objects[0].x, objects[0].y);
+
+    render_all(&mut root, &mut con, &objects, &mut map, &mut fov_map, fov_recompute);
     root.flush();
 
     for object in &objects {
@@ -200,6 +222,7 @@ fn main() {
     }
 
     let player = &mut objects[0];
+    previous_player_position = (player.x, player.y);
     let exit = handle_keys(&mut root, player, &map);
 
     if exit {
@@ -208,19 +231,36 @@ fn main() {
   }
 }
 
-fn render_all(root: &mut Root, console: &mut Offscreen, objects: &[Object], map: &Map) {
-  for object in objects {
-    object.draw(console);
+fn render_all(root: &mut Root, console: &mut Offscreen, objects: &[Object], map: &mut Map, fov_map: &mut FovMap, fov_recompute: bool) {
+  if fov_recompute {
+    let player = &objects[0];
+    fov_map.compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
+
+    for y in 0..MAP_HEIGHT {
+      for x in 0..MAP_WIDTH {
+        let visible = fov_map.is_in_fov(x, y);
+        let wall = map[x as usize][y as usize].block_sight;
+        let color = match (visible, wall) {
+          (false, true) => COLOR_DARK_WALL,
+          (false, false) => COLOR_DARK_GROUND,
+
+          (true, true) => COLOR_LIGHT_WALL,
+          (true, false) => COLOR_LIGHT_GROUND,
+        };
+        let explored = &mut map[x as usize][y as usize].explored;
+        if visible {
+          *explored = true;
+        }
+        if *explored {
+          console.set_char_background(x, y, color, BackgroundFlag::Set);
+        }
+      }
+    }
   }
 
-  for y in 0..MAP_HEIGHT {
-    for x in 0..MAP_WIDTH {
-      let wall = map[x as usize][y as usize].block_sight;
-      if wall {
-        console.set_char_background(x, y, COLOR_DARK_WALL, BackgroundFlag::Set);
-      } else {
-        console.set_char_background(x, y, COLOR_DARK_GROUND, BackgroundFlag::Set);
-      }
+  for object in objects {
+    if fov_map.is_in_fov(object.x, object.y) {
+      object.draw(console);
     }
   }
 
