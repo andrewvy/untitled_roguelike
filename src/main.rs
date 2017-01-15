@@ -9,6 +9,9 @@ use tcod::console::*;
 use tcod::colors::{self, Color};
 use tcod::map::{Map as FovMap, FovAlgorithm};
 
+mod tile;
+use tile::Tile;
+
 const FOV_ALGO: FovAlgorithm = FovAlgorithm::Basic;
 const FOV_LIGHT_WALLS: bool = true;
 const TORCH_RADIUS: i32 = 10;
@@ -61,31 +64,6 @@ impl Object {
 
   pub fn clear(&self, console: &mut Console) {
     console.put_char(self.x, self.y, ' ', BackgroundFlag::None);
-  }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct Tile {
-  blocked: bool,
-  block_sight: bool,
-  explored: bool,
-}
-
-impl Tile {
-  pub fn empty() -> Self {
-    Tile {
-      blocked: false,
-      block_sight: false,
-      explored: false,
-    }
-  }
-
-  pub fn wall() -> Self {
-    Tile {
-      blocked: true,
-      block_sight: true,
-      explored: false,
-    }
   }
 }
 
