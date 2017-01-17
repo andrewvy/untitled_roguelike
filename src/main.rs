@@ -168,6 +168,7 @@ fn main() {
     .font_type(FontType::Greyscale)
     .size(SCREEN_WIDTH, SCREEN_HEIGHT)
     .title("Rust/libtcod tutorial")
+    .renderer(Renderer::GLSL)
     .init();
 
   let mut con = Offscreen::new(MAP_WIDTH, MAP_HEIGHT);
